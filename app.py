@@ -2,336 +2,398 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import base64
 
 # ---------- PAGE CONFIG ----------
-st.set_page_config(page_title="Kerala Buy & Sell", layout="wide")
+st.set_page_config(page_title="Kerala Buy & Sell", page_icon="🛒", layout="wide")
 
-# ---------- DATABASE ----------
-conn = sqlite3.connect("marketplace.db", check_same_thread=False)
+# ---------- DATABASE SETUP ----------
+@st.cache_resource
+def init_db():
+    conn = sqlite3.connect("marketplace.db", check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # Users Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mobile TEXT UNIQUE,
+        created_at TEXT
+    )""")
+    
+    # Ads Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ads(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_mobile TEXT,
+        title TEXT,
+        price REAL,
+        category TEXT,
+        location TEXT,
+        description TEXT,
+        image_data TEXT,
+        boost TEXT,
+        views INTEGER,
+        created_at TEXT
+    )""")
+    
+    # Messages Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender TEXT,
+        receiver TEXT,
+        message TEXT,
+        created_at TEXT
+    )""")
+    
+    conn.commit()
+    return conn
+
+conn = init_db()
 cursor = conn.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-mobile TEXT,
-created_at TEXT
-)
-""")
+# ---------- HELPER FUNCTIONS ----------
+def get_base64_of_image(upload_file):
+    if upload_file is not None:
+        return base64.b64encode(upload_file.read()).decode()
+    return ""
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS ads(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user_mobile TEXT,
-title TEXT,
-price REAL,
-category TEXT,
-location TEXT,
-description TEXT,
-image TEXT,
-boost TEXT,
-views INTEGER,
-created_at TEXT
-)
-""")
+def execute_query(query, params=()):
+    cursor.execute(query, params)
+    conn.commit()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS messages(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-sender TEXT,
-receiver TEXT,
-message TEXT,
-created_at TEXT
-)
-""")
-
-conn.commit()
-
-# ---------- SESSION ----------
+# ---------- SESSION STATE ----------
 if "page" not in st.session_state:
     st.session_state.page = "home"
-
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ---------- GRASS THEME ----------
+# ---------- PROFESSIONAL CSS THEME ----------
 st.markdown("""
 <style>
-
-body{
-background: linear-gradient(-45deg,#1e8e3e,#2ecc71,#27ae60,#16a085);
-background-size:400% 400%;
-animation:grass 12s ease infinite;
-}
-
-@keyframes grass{
-0%{background-position:0% 50%}
-50%{background-position:100% 50%}
-100%{background-position:0% 50%}
-}
-
-.header{
-background:#1e8e3e;
-padding:18px;
-border-radius:12px;
-color:white;
-font-size:28px;
-font-weight:bold;
-}
-
-.card{
-background:white;
-padding:15px;
-border-radius:15px;
-box-shadow:0px 4px 12px rgba(0,0,0,0.2);
-margin-bottom:15px;
-}
-
-.price{
-color:#ff6a00;
-font-size:22px;
-font-weight:bold;
-}
-
-.greenbtn{
-background:#1e8e3e;
-color:white;
-padding:6px;
-border-radius:8px;
-text-align:center;
-}
-
-.orangebtn{
-background:#ff6a00;
-color:white;
-padding:6px;
-border-radius:8px;
-text-align:center;
-}
-
-.category{
-background:white;
-padding:10px;
-border-radius:10px;
-text-align:center;
-box-shadow:0px 2px 10px rgba(0,0,0,0.2);
-}
-
+    /* Modern Background & Typography */
+    .stApp { background-color: #f4f7f6; }
+    
+    /* Sleek Header */
+    .main-header {
+        background: linear-gradient(135deg, #0f9b0f, #006b38);
+        padding: 20px;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        font-size: 32px;
+        font-weight: 800;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 25px;
+    }
+    
+    /* Product Cards */
+    .product-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+        transition: transform 0.2s;
+        border: 1px solid #e0e0e0;
+    }
+    .product-card:hover { transform: translateY(-3px); box-shadow: 0px 6px 15px rgba(0,0,0,0.1); }
+    
+    /* Price Tag */
+    .price-tag {
+        color: #e65100;
+        font-size: 24px;
+        font-weight: 900;
+        margin: 10px 0;
+    }
+    
+    /* Category Badges */
+    .category-badge {
+        background: white;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        font-weight: bold;
+        color: #006b38;
+        border: 2px solid #006b38;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    /* Buttons */
+    .btn-chat {
+        background-color: #25D366;
+        color: white !important;
+        padding: 8px 15px;
+        border-radius: 5px;
+        text-decoration: none;
+        font-weight: bold;
+        display: inline-block;
+        text-align: center;
+        width: 100%;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- HEADER ----------
-st.markdown('<div class="header">Kerala Buy & Sell</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🌴 Kerala Buy & Sell Marketplace</div>', unsafe_allow_html=True)
 
-# ---------- LOGIN ----------
+# ---------- AUTHENTICATION ----------
 if st.session_state.user is None:
+    st.subheader("Secure Login / Registration")
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        mobile = st.text_input("📱 Enter Mobile Number (10 digits)", max_chars=10)
+        consent = st.checkbox("Notify admin on WhatsApp when I sign up")
+        
+        if st.button("Login / Signup", use_container_width=True):
+            if len(mobile) >= 10:
+                cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,))
+                user = cursor.fetchone()
+                
+                if not user:
+                    execute_query("INSERT INTO users(mobile, created_at) VALUES(?,?)", (mobile, datetime.now()))
+                    st.success("New account created successfully!")
+                    
+                    if consent:
+                        msg = f"New user signup on Kerala Buy & Sell: {mobile}"
+                        admin_link = f"https://wa.me/918590304889?text={msg}"
+                        st.markdown(f"[🔔 Click here to notify Admin via WhatsApp]({admin_link})")
+                
+                st.session_state.user = mobile
+                st.success("Login successful! Redirecting...")
+                st.rerun()
+            else:
+                st.error("Please enter a valid 10-digit mobile number.")
+    st.stop()
 
-    st.subheader("Mobile Login")
+# ---------- NAVIGATION ----------
+st.markdown("---")
+nav_cols = st.columns(7)
+pages = ["Home", "Post Ad", "My Ads", "Messages", "Tools", "Admin", "Logout"]
+page_keys = ["home", "post", "myads", "chat", "tools", "admin", "logout"]
 
-    mobile = st.text_input("Enter Mobile Number")
+for col, page_name, key in zip(nav_cols, pages, page_keys):
+    if col.button(page_name, use_container_width=True):
+        if key == "logout":
+            st.session_state.user = None
+            st.rerun()
+        else:
+            st.session_state.page = key
+st.markdown("---")
 
-    consent = st.checkbox("Notify admin on WhatsApp when I sign up")
+# ================= PAGE ROUTING =================
 
-    if st.button("Login / Signup"):
-
-        cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,))
-        user = cursor.fetchone()
-
-        if not user:
-            cursor.execute(
-                "INSERT INTO users(mobile,created_at) VALUES(?,?)",
-                (mobile, datetime.now())
-            )
-            conn.commit()
-
-            if consent:
-                msg = f"New user signup: {mobile}"
-                admin_link = f"https://wa.me/918590304889?text={msg}"
-                st.markdown(f"[Notify Admin on WhatsApp]({admin_link})")
-
-        st.session_state.user = mobile
-        st.success("Login successful")
-
-# ---------- MENU ----------
-if st.session_state.user:
-
-    m1,m2,m3,m4,m5,m6,m7 = st.columns(7)
-
-    if m1.button("Home"): st.session_state.page="home"
-    if m2.button("Post Ad"): st.session_state.page="post"
-    if m3.button("My Ads"): st.session_state.page="myads"
-    if m4.button("Messages"): st.session_state.page="chat"
-    if m5.button("GST"): st.session_state.page="gst"
-    if m6.button("EMI"): st.session_state.page="emi"
-    if m7.button("Admin"): st.session_state.page="admin"
-
-# ---------- SEARCH ----------
-search = st.text_input("Search products")
-
-# ---------- CATEGORIES ----------
-st.subheader("Categories")
-
-c1,c2,c3,c4,c5 = st.columns(5)
-
-c1.markdown('<div class="category">Mobiles</div>', unsafe_allow_html=True)
-c2.markdown('<div class="category">Electronics</div>', unsafe_allow_html=True)
-c3.markdown('<div class="category">Vehicles</div>', unsafe_allow_html=True)
-c4.markdown('<div class="category">Property</div>', unsafe_allow_html=True)
-c5.markdown('<div class="category">Jobs</div>', unsafe_allow_html=True)
-
-# ---------- POST AD ----------
-if st.session_state.page == "post":
-
-    st.subheader("Post Ad")
-
-    title = st.text_input("Title")
-    price = st.number_input("Price")
-    category = st.selectbox("Category",["Mobiles","Electronics","Vehicles","Property","Jobs"])
-    location = st.text_input("Location")
-    desc = st.text_area("Description")
-    image = st.text_input("Image URL")
-
-    boost = st.selectbox("Boost",
-    ["Normal","Fast Sell","Featured","Spotlight"])
-
-    if st.button("Publish"):
-
-        cursor.execute("""
-        INSERT INTO ads(
-        user_mobile,title,price,category,
-        location,description,image,boost,views,created_at
-        )
-        VALUES(?,?,?,?,?,?,?,?,?,?)
-        """,(st.session_state.user,title,price,category,
-        location,desc,image,boost,0,datetime.now()))
-
-        conn.commit()
-
-        st.success("Ad Posted")
-
-# ---------- SHOW ADS ----------
-st.subheader("Latest Listings")
-
-ads = pd.read_sql("""
-SELECT * FROM ads
-ORDER BY
-CASE
-WHEN boost='Spotlight' THEN 1
-WHEN boost='Featured' THEN 2
-WHEN boost='Fast Sell' THEN 3
-ELSE 4
-END,
-id DESC
-""", conn)
-
-for i,row in ads.iterrows():
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    col1,col2 = st.columns([1,3])
-
-    if row["image"]:
-        col1.image(row["image"], width=120)
+# ---------- 1. HOME PAGE ----------
+if st.session_state.page == "home":
+    # Search Bar
+    search = st.text_input("🔍 Search products, locations, or categories...")
+    
+    # Categories
+    st.markdown("### Browse Categories")
+    c_cols = st.columns(5)
+    categories = ["Mobiles", "Electronics", "Vehicles", "Property", "Jobs"]
+    for c_col, cat in zip(c_cols, categories):
+        c_col.markdown(f'<div class="category-badge">{cat}</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### 🔥 Latest Listings")
+    
+    # Fetch and filter ads
+    query = """
+    SELECT * FROM ads 
+    ORDER BY 
+        CASE boost 
+            WHEN 'Spotlight' THEN 1 
+            WHEN 'Featured' THEN 2 
+            WHEN 'Fast Sell' THEN 3 
+            ELSE 4 
+        END, 
+        id DESC
+    """
+    ads_df = pd.read_sql(query, conn)
+    
+    if search:
+        # Professional dynamic filtering
+        search_term = search.lower()
+        ads_df = ads_df[
+            ads_df['title'].str.lower().str.contains(search_term) |
+            ads_df['category'].str.lower().str.contains(search_term) |
+            ads_df['location'].str.lower().str.contains(search_term)
+        ]
+    
+    if ads_df.empty:
+        st.info("No listings found. Be the first to post!")
     else:
-        col1.image("https://via.placeholder.com/120")
+        for i, row in ads_df.iterrows():
+            st.markdown('<div class="product-card">', unsafe_allow_html=True)
+            img_col, info_col, action_col = st.columns([1.5, 3, 1])
+            
+            # Display Image (Base64 or Fallback)
+            with img_col:
+                if row["image_data"]:
+                    st.image(base64.b64decode(row["image_data"]), use_container_width=True)
+                else:
+                    st.image("https://via.placeholder.com/300x200?text=No+Image", use_container_width=True)
+            
+            # Info
+            with info_col:
+                boost_badge = f" ⭐ {row['boost']}" if row['boost'] != "Normal" else ""
+                st.markdown(f"#### {row['title']}{boost_badge}")
+                st.markdown(f"<div class='price'>₹{row['price']:,.2f}</div>", unsafe_allow_html=True)
+                st.write(f"**Category:** {row['category']} | **📍 Location:** {row['location']}")
+                st.caption(row['description'])
+            
+            # Actions
+            with action_col:
+                whatsapp_link = f"https://wa.me/{row['user_mobile']}?text=Hi, I am interested in your ad: {row['title']}"
+                st.markdown(f"<a href='{whatsapp_link}' target='_blank' class='btn-chat'>💬 WhatsApp</a>", unsafe_allow_html=True)
+                st.caption(f"Seller: {row['user_mobile']}")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    col2.markdown(f"### {row['title']}")
-    col2.markdown(f"<div class='price'>₹{row['price']}</div>", unsafe_allow_html=True)
-    col2.write("📍", row["location"])
+    # Map Section (Only on Home)
+    st.markdown("### 🗺️ Listings Map (Kerala)")
+    map_data = pd.DataFrame({"lat": [11.2588, 9.9312, 8.5241], "lon": [75.7804, 76.2673, 76.9366]})
+    st.map(map_data)
 
-    whatsapp_link = f"https://wa.me/{row['user_mobile']}"
+# ---------- 2. POST AD ----------
+elif st.session_state.page == "post":
+    st.subheader("📝 Create a New Listing")
+    
+    with st.form("post_ad_form"):
+        col1, col2 = st.columns(2)
+        title = col1.text_input("Ad Title*", required=True)
+        price = col2.number_input("Price (₹)*", min_value=0.0, step=100.0)
+        
+        category = col1.selectbox("Category*", ["Mobiles", "Electronics", "Vehicles", "Property", "Jobs"])
+        location = col2.text_input("Location*", required=True)
+        
+        desc = st.text_area("Detailed Description")
+        
+        # New Feature: Real Image Upload
+        st.write("Upload Product Image")
+        uploaded_file = st.file_uploader("Choose an image file", type=['jpg', 'jpeg', 'png'])
+        
+        boost = st.selectbox("Ad Visibility Package", ["Normal", "Fast Sell", "Featured", "Spotlight"])
+        
+        submitted = st.form_submit_button("🚀 Publish Ad", use_container_width=True)
+        
+        if submitted:
+            if title and location:
+                img_data = get_base64_of_image(uploaded_file)
+                execute_query("""
+                INSERT INTO ads(user_mobile, title, price, category, location, description, image_data, boost, views, created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)
+                """, (st.session_state.user, title, price, category, location, desc, img_data, boost, 0, datetime.now()))
+                st.success("🎉 Ad Posted Successfully!")
+            else:
+                st.error("Please fill in all mandatory fields (*)")
 
-    b1,b2 = col2.columns(2)
+# ---------- 3. MY ADS ----------
+elif st.session_state.page == "myads":
+    st.subheader("📋 Manage My Ads")
+    
+    my_ads = pd.read_sql("SELECT * FROM ads WHERE user_mobile=?", conn, params=(st.session_state.user,))
+    
+    if my_ads.empty:
+        st.info("You haven't posted any ads yet.")
+    else:
+        for i, row in my_ads.iterrows():
+            with st.container():
+                st.markdown(f"**{row['title']}** - ₹{row['price']}")
+                col1, col2 = st.columns([1, 5])
+                if col1.button("❌ Delete", key=f"del_{row['id']}"):
+                    execute_query("DELETE FROM ads WHERE id=?", (row['id'],))
+                    st.success("Ad deleted. Please refresh.")
+                    st.rerun()
+                st.markdown("---")
 
-    b1.markdown(
-        f"<a href='{whatsapp_link}'><div class='greenbtn'>Chat</div></a>",
-        unsafe_allow_html=True
-    )
+# ---------- 4. MESSAGES (INBOX & SEND) ----------
+elif st.session_state.page == "chat":
+    st.subheader("💬 Message Center")
+    
+    tab1, tab2 = st.tabs(["📥 Inbox", "📤 Send Message"])
+    
+    with tab1:
+        inbox = pd.read_sql("SELECT sender, message, created_at FROM messages WHERE receiver=? ORDER BY id DESC", conn, params=(st.session_state.user,))
+        if inbox.empty:
+            st.info("Your inbox is empty.")
+        else:
+            for i, row in inbox.iterrows():
+                st.info(f"**From {row['sender']}** ({row['created_at'][:16]}):\n\n{row['message']}")
+                
+    with tab2:
+        with st.form("send_msg_form"):
+            receiver = st.text_input("Send to Mobile Number")
+            msg = st.text_area("Type your message here...")
+            if st.form_submit_button("Send Message"):
+                if receiver and msg:
+                    execute_query("INSERT INTO messages(sender, receiver, message, created_at) VALUES(?,?,?,?)",
+                                  (st.session_state.user, receiver, msg, datetime.now()))
+                    st.success("Message Sent Successfully!")
+                else:
+                    st.error("Please fill out both fields.")
 
-    b2.markdown(
-        "<div class='orangebtn'>Sell</div>",
-        unsafe_allow_html=True
-    )
+# ---------- 5. TOOLS (GST & EMI) ----------
+elif st.session_state.page == "tools":
+    st.subheader("🧮 Financial Tools")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### GST Calculator")
+        with st.container(border=True):
+            amount = st.number_input("Base Amount (₹)", min_value=0.0)
+            rate = st.selectbox("GST Rate (%)", [5, 12, 18, 28])
+            if amount > 0:
+                gst = amount * rate / 100
+                st.metric("Total GST Amount", f"₹{gst:,.2f}")
+                st.metric("Total Bill (Amount + GST)", f"₹{(amount + gst):,.2f}")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown("#### EMI Calculator")
+        with st.container(border=True):
+            loan = st.number_input("Loan Amount (₹)", min_value=0.0)
+            int_rate = st.number_input("Annual Interest Rate (%)", min_value=0.0)
+            years = st.number_input("Tenure (Years)", min_value=1)
+            
+            if loan > 0 and int_rate > 0:
+                r = (int_rate / 12) / 100
+                months = years * 12
+                emi = loan * r * ((1 + r)**months) / (((1 + r)**months) - 1)
+                st.metric("Estimated Monthly EMI", f"₹{emi:,.2f}")
+                st.metric("Total Interest Payable", f"₹{(emi*months - loan):,.2f}")
 
-# ---------- GST ----------
-if st.session_state.page == "gst":
-
-    st.subheader("GST Calculator")
-
-    amount = st.number_input("Amount")
-    rate = st.selectbox("GST %",[5,12,18,28])
-
-    gst = amount * rate / 100
-    total = amount + gst
-
-    st.write("GST:", gst)
-    st.write("Total:", total)
-
-# ---------- EMI ----------
-if st.session_state.page == "emi":
-
-    st.subheader("EMI Calculator")
-
-    loan = st.number_input("Loan Amount")
-    rate = st.number_input("Interest %")
-    years = st.number_input("Years")
-
-    months = years * 12
-    r = rate/(12*100)
-
-    if r>0:
-        emi = loan*r*(1+r)**months/((1+r)**months-1)
-        st.metric("Monthly EMI", emi)
-
-# ---------- CHAT ----------
-if st.session_state.page == "chat":
-
-    st.subheader("Messages")
-
-    receiver = st.text_input("Send to Mobile")
-    msg = st.text_input("Message")
-
-    if st.button("Send"):
-
-        cursor.execute("""
-        INSERT INTO messages(sender,receiver,message,created_at)
-        VALUES(?,?,?,?)
-        """,(st.session_state.user,receiver,msg,datetime.now()))
-
-        conn.commit()
-
-        st.success("Message Sent")
-
-# ---------- ADMIN ----------
-if st.session_state.page == "admin":
-
-    st.subheader("Admin Dashboard")
-
-    users = pd.read_sql("SELECT COUNT(*) c FROM users",conn).iloc[0]["c"]
-    ads_count = pd.read_sql("SELECT COUNT(*) c FROM ads",conn).iloc[0]["c"]
-
-    a,b,c = st.columns(3)
-
-    a.metric("Users", users)
-    b.metric("Ads", ads_count)
-    c.metric("Revenue","-")
-
-    st.subheader("Recent Ads")
-
-    data = pd.read_sql("""
-    SELECT title,category,price,location
-    FROM ads ORDER BY id DESC LIMIT 10
-    """, conn)
-
-    st.dataframe(data)
-
-# ---------- MAP ----------
-st.subheader("Map")
-
-map_data = pd.DataFrame({
-"lat":[11.2588],
-"lon":[75.7804]
-})
-
-st.map(map_data)
+# ---------- 6. ADMIN DASHBOARD ----------
+elif st.session_state.page == "admin":
+    st.subheader("👑 Admin Dashboard")
+    
+    users_count = pd.read_sql("SELECT COUNT(*) c FROM users", conn).iloc[0]["c"]
+    ads_count = pd.read_sql("SELECT COUNT(*) c FROM ads", conn).iloc[0]["c"]
+    msg_count = pd.read_sql("SELECT COUNT(*) c FROM messages", conn).iloc[0]["c"]
+    
+    # Top KPI Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Registered Users", users_count)
+    m2.metric("Total Active Ads", ads_count)
+    m3.metric("Platform Messages Sent", msg_count)
+    
+    st.markdown("---")
+    
+    # Graphical Data
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Ads by Category**")
+        cat_data = pd.read_sql("SELECT category, COUNT(*) as count FROM ads GROUP BY category", conn)
+        if not cat_data.empty:
+            st.bar_chart(cat_data.set_index('category'))
+        else:
+            st.write("No data available yet.")
+            
+    with col2:
+        st.markdown("**Recent Ads Table**")
+        recent_ads = pd.read_sql("SELECT title, category, price, location FROM ads ORDER BY id DESC LIMIT 10", conn)
+        st.dataframe(recent_ads, use_container_width=True)
