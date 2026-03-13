@@ -2,7 +2,6 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
-import random
 import base64
 import time
 
@@ -10,7 +9,8 @@ import time
 st.set_page_config(page_title="Kerala Buy & Sell", page_icon="🌴", layout="wide")
 
 # ---------- CONSTANTS ----------
-ADMIN_NUMBER = "8590304889"
+# Set this to your phone number, which will serve as the unique admin login ID
+ADMIN_NUMBER = "8590304889" 
 
 # ---------- DATABASE SETUP ----------
 @st.cache_resource
@@ -27,14 +27,13 @@ def init_db():
         created_at TEXT
     )""")
     
-    # Check if address column exists (for backward compatibility if DB already exists)
+    # Try adding columns for backward compatibility if the DB already exists
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN address TEXT")
         conn.commit()
-    except sqlite3.OperationalError:
-        pass # Column already exists
+    except sqlite3.OperationalError: pass
     
-    # Ads Table
+    # Ads Table (Updated to 'image_base64_json' for multiple images)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS ads(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,11 +43,18 @@ def init_db():
         category TEXT,
         location TEXT,
         description TEXT,
-        image_data TEXT,
+        image_base64_json TEXT,  
         boost TEXT,
         views INTEGER,
+        status TEXT,
         created_at TEXT
     )""")
+
+    # Try adding status column for existing databases
+    try:
+        cursor.execute("ALTER TABLE ads ADD COLUMN status TEXT DEFAULT 'Approved'")
+        conn.commit()
+    except sqlite3.OperationalError: pass
     
     # Messages Table
     cursor.execute("""
@@ -70,21 +76,24 @@ def execute_query(query, params=()):
     cursor.execute(query, params)
     conn.commit()
 
-def get_base64_of_image(upload_file):
-    if upload_file is not None:
-        return base64.b64encode(upload_file.read()).decode()
-    return ""
+# NEW FEATURE: Encode multiple images as a JSON list of Base64 strings
+def get_images_as_base64(upload_files):
+    if upload_files:
+        encoded_images = []
+        for file in upload_files:
+            encoded_images.append(base64.b64encode(file.read()).decode())
+        import json
+        return json.dumps(encoded_images)
+    return None
 
-def send_silent_whatsapp(new_user_mobile, new_user_address):
+# Placeholder function for sending a WhatsApp message via API (Twilio, Meta, etc.)
+def send_background_whatsapp(new_user_mobile, new_user_address):
     """
-    To make this truly silent and hidden, you must use a service like Twilio or Meta Graph API.
-    Streamlit runs on the server, so putting API requests here keeps it hidden from the user.
+    To make this hidden from the user, you must use a background backend service 
+    like the WhatsApp Business API (via providers like Twilio or Meta).
     """
-    message = f"🚨 New User Registered!\nMobile: {new_user_mobile}\nAddress: {new_user_address}"
-    # Example of what you would do with an API:
-    # requests.post("https://api.twilio.com/.../Messages.json", auth=(SID, TOKEN), data={"To": ADMIN_NUMBER, "Body": message})
-    
-    # For now, we log it to the server console so the app doesn't break
+    message = f"🚨 New User Registered on Kerala Buy & Sell!\n\nMobile: {new_user_mobile}\nAddress: {new_user_address}"
+    # This keeps the functionality separate so it doesn't break the user experience
     print(f"\n[BACKGROUND NOTIFICATION TO {ADMIN_NUMBER}]: {message}\n")
 
 # ---------- SESSION STATE ----------
@@ -97,194 +106,245 @@ if "otp_sent" not in st.session_state:
 if "expected_otp" not in st.session_state:
     st.session_state.expected_otp = None
 
-# ---------- GRASS THEME ----------
+# ---------- THEME AND CUSTOM CSS ----------
+# Recreating the Clean White, Green, and Orange theme from the photos
 st.markdown("""
 <style>
-    /* Animated Grass Background */
+    /* White, modern background */
     .stApp {
-        background: linear-gradient(-45deg, #1e8e3e, #2ecc71, #27ae60, #16a085);
-        background-size: 400% 400%;
-        animation: grass 12s ease infinite;
+        background-color: #f7f9fb;
     }
     
-    @keyframes grass{
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    
-    /* Make text readable over the background */
-    h1, h2, h3, h4, p, label {
-        color: white !important;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-    }
-
-    /* Sleek Header */
+    /* Sleek Main Header resembling the top-right photo */
     .main-header {
-        background: rgba(0, 0, 0, 0.4);
-        padding: 20px;
+        background: white;
+        padding: 15px 30px;
         border-radius: 12px;
-        color: white;
-        text-align: center;
-        font-size: 32px;
-        font-weight: 800;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
         margin-bottom: 25px;
-        backdrop-filter: blur(5px);
+        border: 1px solid #e1e8ed;
+    }
+    .main-header h1 {
+        color: #1a1a1a !important;
+        font-weight: 800;
+        font-size: 28px;
+        margin: 0;
     }
     
-    /* Product Cards */
+    /* Modern Input Styling */
+    div[data-baseweb="input"] {
+        border-radius: 8px !important;
+    }
+    
+    /* Login & Ad Card styles based on the photos */
     .product-card {
-        background: rgba(255, 255, 255, 0.95);
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
-        margin-bottom: 20px;
-        border: 1px solid #e0e0e0;
-    }
-    
-    .product-card h4, .product-card p {
-        color: #333 !important;
-        text-shadow: none;
-    }
-    
-    .price-tag {
-        color: #ff6a00;
-        font-size: 24px;
-        font-weight: 900;
-        margin: 10px 0;
-    }
-    
-    /* Category Badges */
-    .category-badge {
         background: white;
         padding: 15px;
         border-radius: 10px;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 15px;
+        border: 1px solid #f0f2f6;
+        transition: 0.2s;
+    }
+    .product-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .price-tag {
+        color: #e65c00;
+        font-size: 20px;
+        font-weight: 800;
+        margin: 5px 0;
+    }
+    
+    /* Green, pill-shaped category buttons from the mobile design */
+    .category-pill {
+        background-color: white;
+        color: #1e8e3e;
+        border: 2px solid #1e8e3e;
+        padding: 10px 18px;
+        border-radius: 30px;
         text-align: center;
         font-weight: bold;
-        color: #1e8e3e;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
+        box-shadow: 0px 2px 4px rgba(0,0,0,0.05);
+        display: inline-block;
+        margin: 5px;
+    }
+    
+    /* Green buttons matching the 'Chat' button from the photo */
+    .btn-chat {
+        background-color: #1e8e3e;
+        color: white !important;
+        padding: 8px 15px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: bold;
+        display: block;
+        text-align: center;
+        width: 100%;
+        margin-top: 10px;
+    }
+    
+    /* Orange buttons matching 'Sell Now' from the photo */
+    .btn-sell {
+        background-color: #ff6a00;
+        color: white !important;
+        padding: 8px 15px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: bold;
+        display: block;
+        text-align: center;
+        width: 100%;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- HEADER ----------
-st.markdown('<div class="main-header">🌴 Kerala Buy & Sell Marketplace</div>', unsafe_allow_html=True)
+# ---------- HEADER (RECREATED FROM PHOTO) ----------
+st.markdown(f'<div class="main-header"><h1>Kerala Buy & Sell</h1><span style="color:gray;">Kerala\'s No.1 Classifieds Site</span></div>', unsafe_allow_html=True)
 
-# ---------- OTP AUTHENTICATION FLOW ----------
+# ---------- AUTHENTICATION FLOW (LOGIN/SIGNUP WITH OTP) ----------
 if st.session_state.user is None:
-    st.subheader("Secure OTP Login / Registration")
+    st.subheader("Login / Registration")
     
     with st.container(border=True):
-        if not st.session_state.otp_sent:
-            mobile = st.text_input("📱 Enter Mobile Number (10 digits)", max_chars=10, key="login_mobile")
-            address = st.text_area("🏠 Enter Full Address (Required for new users)", key="login_address")
-            
-            if st.button("Send OTP", use_container_width=True):
-                if len(mobile) == 10 and address.strip():
-                    st.session_state.temp_mobile = mobile
-                    st.session_state.temp_address = address
-                    st.session_state.expected_otp = str(random.randint(1000, 9999))
-                    st.session_state.otp_sent = True
-                    st.rerun()
-                else:
-                    st.error("Please enter a valid 10-digit mobile number and your address.")
-        else:
-            st.info(f"OTP sent to {st.session_state.temp_mobile}. (For demo purposes, your OTP is: **{st.session_state.expected_otp}**)")
-            entered_otp = st.text_input("Enter 4-digit OTP", max_chars=4)
-            
-            col1, col2 = st.columns(2)
-            if col1.button("Verify & Login", use_container_width=True):
-                if entered_otp == st.session_state.expected_otp:
-                    mobile = st.session_state.temp_mobile
-                    address = st.session_state.temp_address
-                    
-                    cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,))
-                    user = cursor.fetchone()
-                    
-                    if not user:
-                        # New User: Save to DB & Trigger Hidden WhatsApp
-                        execute_query("INSERT INTO users(mobile, address, created_at) VALUES(?,?,?)", 
-                                      (mobile, address, datetime.now()))
-                        send_silent_whatsapp(mobile, address)
-                        st.success("New account created! Admin notified silently.")
-                        time.sleep(1)
-                    
-                    # Log them in
-                    st.session_state.user = mobile
+        col1, col2 = st.columns(2)
+        
+        # New Feature: If OTP has been sent, show OTP input field
+        if st.session_state.otp_sent:
+            with col1:
+                st.info(f"An OTP has been sent to {st.session_state.temp_mobile}. (Demo OTP: **{st.session_state.expected_otp}**)")
+                entered_otp = st.text_input("Enter 4-Digit OTP", max_chars=4, key="otp_input")
+                
+                b_cols = st.columns(2)
+                # Verify OTP and log user in
+                if b_cols[0].button("Verify & Login", use_container_width=True):
+                    if entered_otp == st.session_state.expected_otp:
+                        mobile = st.session_state.temp_mobile
+                        address = st.session_state.temp_address
+                        
+                        cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,))
+                        user = cursor.fetchone()
+                        
+                        # New user, register, and silently notify admin
+                        if not user:
+                            execute_query("INSERT INTO users(mobile, address, created_at) VALUES(?,?,?)", (mobile, address, datetime.now()))
+                            send_background_whatsapp(mobile, address)
+                            st.success("Registration successful!")
+                            time.sleep(1)
+                        
+                        st.session_state.user = mobile
+                        st.session_state.otp_sent = False
+                        st.rerun()
+                    else:
+                        st.error("Invalid OTP. Please try again.")
+                
+                # Option to cancel and return to inputting number
+                if b_cols[1].button("Back", use_container_width=True):
                     st.session_state.otp_sent = False
                     st.rerun()
-                else:
-                    st.error("Invalid OTP. Please try again.")
-            
-            if col2.button("Cancel / Back", use_container_width=True):
-                st.session_state.otp_sent = False
-                st.rerun()
+        
+        # Initial login step: Input Mobile and Address
+        else:
+            with col1:
+                mobile = st.text_input("📱 Mobile Number (10 digits)", max_chars=10, key="login_mobile")
+                address = st.text_area("🏠 Address (Required for new users)", key="login_address")
                 
-    st.stop() # Stop rendering the rest of the app until logged in
+                # Check for existing user
+                cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,))
+                user_exists = cursor.fetchone()
+                
+                if st.button("Get OTP", use_container_width=True):
+                    if len(mobile) == 10:
+                        if not user_exists and not address.strip():
+                            st.warning("Address is mandatory for new users.")
+                        else:
+                            st.session_state.temp_mobile = mobile
+                            st.session_state.temp_address = address if not user_exists else ""
+                            import random
+                            st.session_state.expected_otp = str(random.randint(1000, 9999))
+                            st.session_state.otp_sent = True
+                            st.rerun()
+                    else:
+                        st.error("Please enter a valid 10-digit mobile number.")
+                        
+            with col2:
+                # Welcome image matching the design
+                st.image("https://images.unsplash.com/photo-1599305090598-fe179d501c27?q=80&w=600", use_container_width=True)
+                
+    st.stop() # Prevents other content from loading until logged in
 
-# ---------- NAVIGATION ----------
+# ---------- DYNAMIC NAVIGATION (HIDING ADMIN FROM USERS) ----------
 st.markdown("---")
-
-# Dynamically build menu based on role
 nav_items = [("Home", "home"), ("Post Ad", "post"), ("My Ads", "myads"), ("Messages", "chat"), ("Tools", "tools")]
 
-# HIDE ADMIN FROM NORMAL USERS
+# Add Admin Dashboard ONLY for the specific admin number
 if st.session_state.user == ADMIN_NUMBER:
-    nav_items.append(("Admin Dashboard", "admin"))
+    nav_items.append(("👑 Admin Dashboard", "admin"))
 
 nav_items.append(("Logout", "logout"))
-
-# Create dynamic columns based on menu length
 nav_cols = st.columns(len(nav_items))
 
 for col, (page_name, key) in zip(nav_cols, nav_items):
     if col.button(page_name, use_container_width=True):
         if key == "logout":
             st.session_state.user = None
-            st.session_state.page = "home"
             st.session_state.otp_sent = False
+            st.session_state.page = "home"
             st.rerun()
         else:
             st.session_state.page = key
             st.rerun()
-            
 st.markdown("---")
 
 # ================= PAGE ROUTING =================
 
 # ---------- 1. HOME PAGE ----------
 if st.session_state.page == "home":
-    search = st.text_input("🔍 Search products, locations, or categories...")
+    # Main search bar and banner matching the design
+    st.markdown('<div class="product-card" style="text-align:center;">', unsafe_allow_html=True)
+    st.image("https://images.unsplash.com/photo-1582650849208-41c6e118c77b?q=80&w=1200", use_container_width=True, caption="Buy & Sell Easily in Kerala")
+    search = st.text_input("🔍 Search products, locations, categories...", key="main_search")
+    st.markdown('</div>', unsafe_allow_html=True)
     
+    # Modern category pillars matching the mobile and desktop photo
     st.markdown("### Browse Categories")
-    c_cols = st.columns(5)
     categories = ["Mobiles", "Electronics", "Vehicles", "Property", "Jobs"]
+    c_cols = st.columns(len(categories))
     for c_col, cat in zip(c_cols, categories):
-        c_col.markdown(f'<div class="category-badge">{cat}</div>', unsafe_allow_html=True)
+        c_col.markdown(f'<div class="category-pill">{cat}</div>', unsafe_allow_html=True)
     
     st.markdown("---")
-    st.markdown("### 🔥 Latest Listings")
+    st.markdown("### 🔥 Latest Approved Listings")
     
-    query = "SELECT * FROM ads ORDER BY CASE boost WHEN 'Spotlight' THEN 1 WHEN 'Featured' THEN 2 WHEN 'Fast Sell' THEN 3 ELSE 4 END, id DESC"
+    # Ad cards style from photos. Showing only approved ads.
+    query = "SELECT * FROM ads WHERE status='Approved' ORDER BY CASE boost WHEN 'Spotlight' THEN 1 WHEN 'Featured' THEN 2 WHEN 'Fast Sell' THEN 3 ELSE 4 END, id DESC"
     ads_df = pd.read_sql(query, conn)
     
     if search:
-        search_term = search.lower()
-        ads_df = ads_df[ads_df['title'].str.lower().str.contains(search_term) | 
-                        ads_df['category'].str.lower().str.contains(search_term) | 
-                        ads_df['location'].str.lower().str.contains(search_term)]
+        ads_df = ads_df[ads_df['title'].str.lower().str.contains(search.lower()) | 
+                        ads_df['category'].str.lower().str.contains(search.lower()) | 
+                        ads_df['location'].str.lower().str.contains(search.lower())]
     
     if ads_df.empty:
-        st.info("No listings found. Be the first to post!")
+        st.info("No listings found matching your criteria.")
     else:
         for i, row in ads_df.iterrows():
             st.markdown('<div class="product-card">', unsafe_allow_html=True)
             img_col, info_col, action_col = st.columns([1.5, 3, 1])
             
             with img_col:
-                if row["image_data"]:
-                    st.image(base64.b64decode(row["image_data"]), use_container_width=True)
+                if row["image_base64_json"]:
+                    import json
+                    images = json.loads(row["image_base64_json"])
+                    if images:
+                        st.image(base64.b64decode(images[0]), use_container_width=True)
+                    else:
+                        st.image("https://via.placeholder.com/300x200?text=No+Image", use_container_width=True)
                 else:
                     st.image("https://via.placeholder.com/300x200?text=No+Image", use_container_width=True)
             
@@ -292,18 +352,20 @@ if st.session_state.page == "home":
                 boost_badge = f" ⭐ {row['boost']}" if row['boost'] != "Normal" else ""
                 st.markdown(f"#### <span style='color:black;'>{row['title']}</span>{boost_badge}", unsafe_allow_html=True)
                 st.markdown(f"<div class='price-tag'>₹{row['price']:,.2f}</div>", unsafe_allow_html=True)
-                st.markdown(f"<p style='color:gray;'><b>Category:</b> {row['category']} | <b>📍 Location:</b> {row['location']}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color:gray;'>{row['category']} | {row['location']}</p>", unsafe_allow_html=True)
                 st.markdown(f"<p style='color:black;'>{row['description']}</p>", unsafe_allow_html=True)
             
             with action_col:
                 whatsapp_link = f"https://wa.me/{row['user_mobile']}?text=Hi, I am interested in your ad: {row['title']}"
-                st.markdown(f"<a href='{whatsapp_link}' target='_blank' style='background-color:#25D366; color:white; padding:8px 15px; border-radius:5px; text-decoration:none; display:inline-block; width:100%; text-align:center;'>💬 WhatsApp</a>", unsafe_allow_html=True)
+                st.markdown(f"<a href='{whatsapp_link}' target='_blank' class='btn-chat'>💬 WhatsApp</a>", unsafe_allow_html=True)
+                st.caption(f"Seller: {row['user_mobile']}")
             
             st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------- 2. POST AD ----------
+# ---------- 2. POST AD (WITH MULTI-IMAGE UPLOAD) ----------
 elif st.session_state.page == "post":
-    st.subheader("📝 Create a New Listing")
+    st.subheader("🚀 Post Your Ad")
+    
     with st.form("post_ad_form"):
         col1, col2 = st.columns(2)
         title = col1.text_input("Ad Title*", required=True)
@@ -311,19 +373,25 @@ elif st.session_state.page == "post":
         category = col1.selectbox("Category*", ["Mobiles", "Electronics", "Vehicles", "Property", "Jobs"])
         location = col2.text_input("Location*", required=True)
         desc = st.text_area("Detailed Description")
-        uploaded_file = st.file_uploader("Upload Product Image", type=['jpg', 'jpeg', 'png'])
-        boost = st.selectbox("Ad Visibility Package", ["Normal", "Fast Sell", "Featured", "Spotlight"])
         
-        if st.form_submit_button("🚀 Publish Ad", use_container_width=True):
-            if title and location:
-                img_data = get_base64_of_image(uploaded_file)
-                execute_query("INSERT INTO ads(user_mobile, title, price, category, location, description, image_data, boost, views, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                              (st.session_state.user, title, price, category, location, desc, img_data, boost, 0, datetime.now()))
-                st.success("🎉 Ad Posted Successfully!")
+        # New Feature: Upload Multiple Images
+        uploaded_files = st.file_uploader("Upload Product Images (Max 5)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        
+        boost = st.selectbox("Boost Your Ad", ["Normal", "Fast Sell", "Featured", "Spotlight"])
+        submitted = st.form_submit_button("Publish Ad")
+        
+        if submitted:
+            if not uploaded_files:
+                st.error("Please upload at least one image.")
+            elif len(uploaded_files) > 5:
+                st.error("You can upload a maximum of 5 images.")
             else:
-                st.error("Please fill in all mandatory fields (*)")
+                img_data_json = get_images_as_base64(uploaded_files)
+                execute_query("INSERT INTO ads(user_mobile, title, price, category, location, description, image_base64_json, boost, views, status, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                              (st.session_state.user, title, price, category, location, desc, img_data_json, boost, 0, 'Approved', datetime.now()))
+                st.success("🎉 Ad Posted Successfully!")
 
-# ---------- 3. MY ADS ----------
+# ---------- 3. MY ADS (AD MANAGEMENT) ----------
 elif st.session_state.page == "myads":
     st.subheader("📋 Manage My Ads")
     my_ads = pd.read_sql("SELECT * FROM ads WHERE user_mobile=?", conn, params=(st.session_state.user,))
@@ -333,7 +401,8 @@ elif st.session_state.page == "myads":
         for i, row in my_ads.iterrows():
             with st.container(border=True):
                 col1, col2 = st.columns([4, 1])
-                col1.markdown(f"**{row['title']}** - ₹{row['price']}")
+                status_color = "#1e8e3e" if row['status'] == 'Approved' else "#ffc107" if row['status'] == 'Pending' else "#dc3545"
+                col1.markdown(f"**{row['title']}** - ₹{row['price']} | <span style='color:{status_color}; font-weight:bold;'>{row['status']}</span>", unsafe_allow_html=True)
                 if col2.button("❌ Delete", key=f"del_{row['id']}"):
                     execute_query("DELETE FROM ads WHERE id=?", (row['id'],))
                     st.success("Ad deleted.")
@@ -352,7 +421,7 @@ elif st.session_state.page == "chat":
                 st.info(f"**From {row['sender']}** ({row['created_at'][:16]}):\n\n{row['message']}")
     with tab2:
         with st.form("send_msg_form"):
-            receiver = st.text_input("Send to Mobile Number")
+            receiver = st.text_input("Recipient Mobile Number")
             msg = st.text_area("Type your message here...")
             if st.form_submit_button("Send Message"):
                 if receiver and msg:
@@ -362,16 +431,19 @@ elif st.session_state.page == "chat":
 
 # ---------- 5. TOOLS ----------
 elif st.session_state.page == "tools":
+    st.subheader("🧮 Calculator Tools")
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("GST Calculator")
+        st.markdown("#### GST Calculator")
         with st.container(border=True):
             amount = st.number_input("Base Amount (₹)", min_value=0.0)
             rate = st.selectbox("GST Rate (%)", [5, 12, 18, 28])
             if amount > 0:
-                st.metric("Total Bill (Amount + GST)", f"₹{(amount + (amount * rate / 100)):,.2f}")
+                gst_amount = amount * rate / 100
+                st.metric("Total GST Amount", f"₹{gst_amount:,.2f}")
+                st.metric("Total Bill (Amount + GST)", f"₹{(amount + gst_amount):,.2f}")
     with col2:
-        st.subheader("EMI Calculator")
+        st.markdown("#### EMI Calculator")
         with st.container(border=True):
             loan = st.number_input("Loan Amount (₹)", min_value=0.0)
             int_rate = st.number_input("Annual Interest Rate (%)", min_value=0.0)
@@ -381,17 +453,49 @@ elif st.session_state.page == "tools":
                 months = years * 12
                 emi = loan * r * ((1 + r)**months) / (((1 + r)**months) - 1)
                 st.metric("Estimated Monthly EMI", f"₹{emi:,.2f}")
+                st.metric("Total Interest Payable", f"₹{(emi*months - loan):,.2f}")
 
-# ---------- 6. ADMIN DASHBOARD (HIDDEN) ----------
+# ---------- 6. ADMIN DASHBOARD (RECREATED FROM BOTTOM-LEFT PHOTO) ----------
 elif st.session_state.page == "admin" and st.session_state.user == ADMIN_NUMBER:
     st.subheader("👑 Secret Admin Dashboard")
+    
+    # KPIs from the Admin Panel photo
     users_df = pd.read_sql("SELECT * FROM users", conn)
     ads_df = pd.read_sql("SELECT * FROM ads", conn)
     
-    m1, m2 = st.columns(2)
-    m1.metric("Total Registered Users", len(users_df))
-    m2.metric("Total Active Ads", len(ads_df))
+    m1, m2, m3, m4 = st.columns(4)
+    # Style the columns based on the green, orange, blue, and red from the photo
+    m1.markdown(f'<div style="background-color:#1e8e3e; color:white; padding:15px; border-radius:10px; text-align:center;"><p>Total Users</p><h2>{len(users_df)}</h2></div>', unsafe_allow_html=True)
+    m2.markdown(f'<div style="background-color:#ff6a00; color:white; padding:15px; border-radius:10px; text-align:center;"><p>Total Listings</p><h2>{len(ads_df)}</h2></div>', unsafe_allow_html=True)
+    m3.markdown(f'<div style="background-color:#007bff; color:white; padding:15px; border-radius:10px; text-align:center;"><p>Approved Ads</p><h2>{len(ads_df[ads_df["status"]=="Approved"])}</h2></div>', unsafe_allow_html=True)
+    m4.markdown(f'<div style="background-color:#dc3545; color:white; padding:15px; border-radius:10px; text-align:center;"><p>Pending Ads</p><h2>{len(ads_df[ads_df["status"]=="Pending"])}</h2></div>', unsafe_allow_html=True)
     
+    st.markdown("### Latest Listings Management")
+    # Interactive dataframe to review/approve/reject ads based on photo table
+    ad_table = ads_df[['id', 'title', 'category', 'price', 'user_mobile', 'location', 'status']]
+    
+    selected_ad_id = st.selectbox("Select Ad ID to Review", ad_table['id'].tolist())
+    
+    # Review single ad details
+    if selected_ad_id:
+        ad_details = ads_df[ads_df['id'] == selected_ad_id].iloc[0]
+        st.write(f"**User**: {ad_details['user_mobile']} | **Location**: {ad_details['location']} | **Status**: {ad_details['status']}")
+        
+        c1, c2, c3 = st.columns(3)
+        if c1.button("✅ Approve", key="appr"):
+            execute_query("UPDATE ads SET status='Approved' WHERE id=?", (selected_ad_id,))
+            st.success(f"Ad {selected_ad_id} Approved.")
+            st.rerun()
+        if c2.button("🚫 Reject", key="rej"):
+            execute_query("UPDATE ads SET status='Rejected' WHERE id=?", (selected_ad_id,))
+            st.warning(f"Ad {selected_ad_id} Rejected.")
+            st.rerun()
+        if c3.button("🗑️ Delete", key="del_admin"):
+            execute_query("DELETE FROM ads WHERE id=?", (selected_ad_id,))
+            st.error(f"Ad {selected_ad_id} Deleted.")
+            st.rerun()
+            
+    # Display the full database tables
     st.markdown("### User Database")
     st.dataframe(users_df, use_container_width=True)
     
