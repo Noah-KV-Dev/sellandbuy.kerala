@@ -69,6 +69,12 @@ if "user" not in st.session_state:
 if "selected_category" not in st.session_state: 
     st.session_state.selected_category = "All" 
  
+if "otp_sent" not in st.session_state:
+    st.session_state.otp_sent = False
+
+if "generated_otp" not in st.session_state:
+    st.session_state.generated_otp = None
+
 # ---------- GRASS THEME ---------- 
 st.markdown(""" 
 <style> 
@@ -178,32 +184,54 @@ if st.session_state.user is None:
         st.subheader("📱 Mobile Login") 
         col1, col2 = st.columns([2, 1]) 
         with col1: 
-            mobile = st.text_input("Enter 10 Digit Mobile Number", placeholder="9876543210") 
+            mobile = st.text_input("Enter 10 Digit Mobile Number", placeholder="9876543210", disabled=st.session_state.otp_sent) 
         with col2: 
             st.write("") # Spacer 
             st.write("") # Spacer 
-            consent = st.checkbox("Notify Admin on WhatsApp") 
+            consent = st.checkbox("Notify Admin on WhatsApp", disabled=st.session_state.otp_sent) 
          
-        if st.button("Login / Signup", use_container_width=True): 
-            if len(mobile) >= 10: 
-                cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,)) 
-                user = cursor.fetchone() 
- 
-                if not user: 
-                    cursor.execute( 
-                        "INSERT INTO users(mobile, created_at) VALUES(?,?)", 
-                        (mobile, datetime.now()) 
-                    ) 
-                    conn.commit() 
-                    if consent: 
-                        msg = f"New user signup: {mobile}" 
-                        admin_link = f"https://wa.me/918590304889?text={msg}" 
-                        st.markdown(f"[Click here to Notify Admin]({admin_link})") 
- 
-                st.session_state.user = mobile 
-                st.rerun() 
-            else: 
-                st.error("Please enter a valid mobile number") 
+        if not st.session_state.otp_sent:
+            if st.button("Send OTP", use_container_width=True): 
+                if len(mobile) >= 10: 
+                    import random
+                    st.session_state.generated_otp = str(random.randint(1000, 9999))
+                    st.session_state.otp_sent = True
+                    st.rerun()
+                else: 
+                    st.error("Please enter a valid mobile number") 
+        else:
+            otp_input = st.text_input("Enter 4-Digit OTP", placeholder="1234")
+            # For simulation, show the generated OTP
+            st.info(f"Simulated OTP: {st.session_state.generated_otp}")
+            
+            col_v1, col_v2 = st.columns(2)
+            if col_v1.button("Verify & Login", use_container_width=True):
+                if otp_input == st.session_state.generated_otp:
+                    cursor.execute("SELECT * FROM users WHERE mobile=?", (mobile,)) 
+                    user = cursor.fetchone() 
+     
+                    if not user: 
+                        cursor.execute( 
+                            "INSERT INTO users(mobile, created_at) VALUES(?,?)", 
+                            (mobile, datetime.now()) 
+                        ) 
+                        conn.commit() 
+                        if consent: 
+                            msg = f"New user signup: {mobile}" 
+                            admin_link = f"https://wa.me/918590304889?text={msg}" 
+                            st.markdown(f"[Click here to Notify Admin]({admin_link})") 
+     
+                    st.session_state.user = mobile 
+                    st.session_state.otp_sent = False
+                    st.session_state.generated_otp = None
+                    st.rerun() 
+                else:
+                    st.error("Invalid OTP. Please try again.")
+            
+            if col_v2.button("Change Number", use_container_width=True):
+                st.session_state.otp_sent = False
+                st.session_state.generated_otp = None
+                st.rerun()
  
 # ---------- MENU ---------- 
 if st.session_state.user: 
@@ -427,6 +455,19 @@ elif st.session_state.page == "admin":
         b.metric("Total Ads", ads_count) 
         c.metric("Items Sold", sold_count) 
  
+        st.write("---")
+        st.subheader("👥 User Management")
+        user_search = st.text_input("Search Users by Mobile", placeholder="Enter mobile number...")
+        
+        users_query = "SELECT mobile, created_at FROM users"
+        if user_search:
+            users_query += f" WHERE mobile LIKE '%{user_search}%'"
+        users_query += " ORDER BY id DESC"
+        
+        users_df = pd.read_sql(users_query, conn)
+        st.dataframe(users_df, use_container_width=True)
+
+        st.write("---")
         st.subheader("Recent Activity") 
         recent = pd.read_sql("SELECT title, price, status, user_mobile FROM ads ORDER BY id DESC LIMIT 10", conn) 
         st.dataframe(recent, use_container_width=True) 
