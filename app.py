@@ -3,107 +3,92 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Kerala Buy & Sell", layout="wide")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Kerala Buy & Sell",
+    layout="wide"
+)
 
 # ---------------- DATABASE ----------------
-
-conn = sqlite3.connect("kerala_market.db",check_same_thread=False)
+conn = sqlite3.connect("marketplace.db",check_same_thread=False)
 cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-password TEXT
-)
-""")
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS ads(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
-user TEXT,
 title TEXT,
 price REAL,
 category TEXT,
 location TEXT,
 description TEXT,
-image BLOB,
-date TEXT
+image TEXT,
+created_at TEXT
 )
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS favourites(
+CREATE TABLE IF NOT EXISTS users(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
-user TEXT,
-title TEXT
+mobile TEXT,
+created_at TEXT
 )
 """)
 
 conn.commit()
 
-# ---------------- FUNCTIONS ----------------
-
-def signup(u,p):
-    cursor.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,p))
-    conn.commit()
-
-def login(u,p):
-    cursor.execute("SELECT * FROM users WHERE username=? AND password=?",(u,p))
-    return cursor.fetchone()
-
-def add_ad(user,title,price,cat,loc,desc,img):
-
-    cursor.execute("""
-    INSERT INTO ads(user,title,price,category,location,description,image,date)
-    VALUES(?,?,?,?,?,?,?,?)
-    """,(user,title,price,cat,loc,desc,img,str(datetime.now())))
-
-    conn.commit()
-
-def get_ads():
-    return pd.read_sql("SELECT * FROM ads ORDER BY id DESC",conn)
-
-# ---------------- SESSION ----------------
-
-if "user" not in st.session_state:
-    st.session_state.user=None
-
-if "page" not in st.session_state:
-    st.session_state.page="home"
-
-# ---------------- STYLE ----------------
-
+# ---------------- CSS DESIGN ----------------
 st.markdown("""
 <style>
 
-.title{
-font-size:40px;
-font-weight:bold;
-color:#0f9d58;
+body{
+background:#f5f7fb;
 }
 
-.button-row button{
-background:#0f9d58;
+.header{
+background:#1b8c3c;
+padding:15px;
+border-radius:10px;
 color:white;
-border-radius:8px;
-width:100%;
-height:45px;
+font-size:28px;
 font-weight:bold;
 }
 
-.card{
+.category{
 background:white;
 padding:15px;
 border-radius:12px;
-box-shadow:0px 3px 12px rgba(0,0,0,0.15);
+text-align:center;
+box-shadow:0px 3px 10px rgba(0,0,0,0.1);
+}
+
+.adcard{
+background:white;
+padding:15px;
+border-radius:12px;
+box-shadow:0px 3px 10px rgba(0,0,0,0.15);
 margin-bottom:20px;
 }
 
 .price{
-color:#ff6f00;
-font-size:22px;
+color:#ff6a00;
+font-size:20px;
 font-weight:bold;
+}
+
+.btnchat{
+background:#1b8c3c;
+color:white;
+padding:8px 15px;
+border-radius:8px;
+text-align:center;
+}
+
+.btnsell{
+background:#ff6a00;
+color:white;
+padding:8px 15px;
+border-radius:8px;
+text-align:center;
 }
 
 </style>
@@ -111,556 +96,123 @@ font-weight:bold;
 
 # ---------------- HEADER ----------------
 
-st.markdown('<div class="title">Kerala Buy & Sell</div>',unsafe_allow_html=True)
+st.markdown(
+'<div class="header">🛍 Kerala Buy & Sell</div>',
+unsafe_allow_html=True
+)
 
-# ---------------- HOME BUTTON MENU ----------------
+st.write("Buy & Sell Easily in Kerala")
 
-col1,col2,col3,col4=st.columns(4)
+# ---------------- SEARCH ----------------
 
-if col1.button("Browse Ads"):
-    st.session_state.page="browse"
+col1,col2 = st.columns([4,1])
 
-if col2.button("Post Ad"):
-    st.session_state.page="post"
+search = col1.text_input("Search products")
 
-if col3.button("My Ads"):
-    st.session_state.page="myads"
+if col2.button("Search"):
+    st.success("Searching...")
 
-if col4.button("Favourites"):
-    st.session_state.page="fav"
+# ---------------- CATEGORIES ----------------
 
-col5,col6,col7=st.columns(3)
+st.subheader("Categories")
 
-if col5.button("Login"):
-    st.session_state.page="login"
+c1,c2,c3,c4 = st.columns(4)
 
-if col6.button("Signup"):
-    st.session_state.page="signup"
+c1.markdown('<div class="category">📱 Mobiles</div>',unsafe_allow_html=True)
+c2.markdown('<div class="category">💻 Electronics</div>',unsafe_allow_html=True)
+c3.markdown('<div class="category">🚗 Vehicles</div>',unsafe_allow_html=True)
+c4.markdown('<div class="category">💼 Jobs</div>',unsafe_allow_html=True)
 
-if col7.button("Admin"):
-    st.session_state.page="admin"
-
-st.divider()
-
-# ---------------- HOME PAGE ----------------
-
-if st.session_state.page=="home":
-
-    st.subheader("Latest Listings")
-
-    df=get_ads()
-
-    cols=st.columns(3)
-
-    for i,row in df.head(9).iterrows():
-
-        with cols[i%3]:
-
-            st.markdown('<div class="card">',unsafe_allow_html=True)
-
-            if row["image"]:
-                st.image(row["image"],use_column_width=True)
-
-            st.markdown(f"### {row['title']}")
-            st.markdown(f'<div class="price">₹ {row["price"]}</div>',unsafe_allow_html=True)
-
-            st.write("📍",row["location"])
-
-            st.markdown('</div>',unsafe_allow_html=True)
-
-# ---------------- BROWSE ----------------
-
-elif st.session_state.page=="browse":
-
-    st.header("Browse Marketplace")
-
-    search=st.text_input("Search")
-
-    df=get_ads()
-
-    if search:
-        df=df[df["title"].str.contains(search,case=False)]
-
-    cols=st.columns(3)
-
-    for i,row in df.iterrows():
-
-        with cols[i%3]:
-
-            st.markdown('<div class="card">',unsafe_allow_html=True)
-
-            if row["image"]:
-                st.image(row["image"],use_column_width=True)
-
-            st.markdown(f"### {row['title']}")
-            st.markdown(f'<div class="price">₹ {row["price"]}</div>',unsafe_allow_html=True)
-
-            st.write("📍",row["location"])
-            st.write(row["description"])
-
-            st.markdown('</div>',unsafe_allow_html=True)
+st.write("")
 
 # ---------------- POST AD ----------------
 
-elif st.session_state.page=="post":
+with st.expander("Post Your Ad"):
 
-    if not st.session_state.user:
-        st.warning("Please login first")
-    else:
+    title = st.text_input("Title")
 
-        st.header("Post Ad")
+    price = st.number_input("Price")
 
-        title=st.text_input("Title")
-        price=st.number_input("Price")
-
-        category=st.selectbox(
+    category = st.selectbox(
         "Category",
-        ["Mobiles","Electronics","Vehicles","Property","Jobs","Furniture"]
+        ["Mobiles","Electronics","Vehicles","Jobs"]
+    )
+
+    location = st.text_input("Location")
+
+    desc = st.text_area("Description")
+
+    if st.button("Post Ad"):
+
+        cursor.execute("""
+        INSERT INTO ads(
+        title,price,category,location,description,created_at
         )
+        VALUES(?,?,?,?,?,?)
+        """,(title,price,category,location,desc,datetime.now()))
 
-        location=st.text_input("Location")
-        desc=st.text_area("Description")
-        img=st.file_uploader("Upload Image")
+        conn.commit()
 
-        if st.button("Post Listing"):
+        st.success("Ad Posted Successfully")
 
-            image=None
+# ---------------- LIST ADS ----------------
 
-            if img:
-                image=img.read()
+st.subheader("Latest Listings")
 
-            add_ad(
-            st.session_state.user,
-            title,
-            price,
-            category,
-            location,
-            desc,
-            image
-            )
-
-            st.success("Ad Posted")
-
-# ---------------- MY ADS ----------------
-
-elif st.session_state.page=="myads":
-
-    if not st.session_state.user:
-        st.warning("Login first")
-    else:
-
-        st.header("My Ads")
-
-        df=pd.read_sql(
-        "SELECT * FROM ads WHERE user=?",
-        conn,
-        params=(st.session_state.user,)
-        )
-
-        st.dataframe(df)
-
-# ---------------- FAVOURITES ----------------
-
-elif st.session_state.page=="fav":
-
-    if not st.session_state.user:
-        st.warning("Login first")
-    else:
-
-        st.header("Favourite Ads")
-
-        df=pd.read_sql(
-        "SELECT * FROM favourites WHERE user=?",
-        conn,
-        params=(st.session_state.user,)
-        )
-
-        st.dataframe(df)
-
-# ---------------- LOGIN ----------------
-
-elif st.session_state.page=="login":
-
-    st.header("Login")
-
-    u=st.text_input("Username")
-    p=st.text_input("Password",type="password")
-
-    if st.button("Login"):
-
-        user=login(u,p)
-
-        if user:
-            st.session_state.user=u
-            st.success("Login Successful")
-            st.session_state.page="home"
-        else:
-            st.error("Invalid Login")
-
-# ---------------- SIGNUP ----------------
-
-elif st.session_state.page=="signup":
-
-    st.header("Signup")
-
-    u=st.text_input("Username")
-    p=st.text_input("Password",type="password")
-
-    if st.button("Create Account"):
-
-        signup(u,p)
-
-        st.success("Account Created")
-
-# ---------------- ADMIN ----------------
-
-elif st.session_state.page=="admin":
-
-    st.header("Admin Dashboard")
-
-    ads=get_ads()
-    users=pd.read_sql("SELECT * FROM users",conn)
-
-    col1,col2=st.columns(2)
-
-    col1.metric("Total Ads",len(ads))
-    col2.metric("Total Users",len(users))
-
-    st.subheader("All Ads")
-    st.dataframe(ads)
-
-    st.subheader("All Users")
-    st.dataframe(users)
-import streamlit as st
-import sqlite3
-import pandas as pd
-from datetime import datetime
-
-st.set_page_config(page_title="Kerala Buy & Sell", layout="wide")
-
-# ---------------- DATABASE ----------------
-
-conn = sqlite3.connect("kerala_market.db",check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT,
-password TEXT
+ads = pd.read_sql(
+"SELECT * FROM ads ORDER BY id DESC",
+conn
 )
-""")
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS ads(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user TEXT,
-title TEXT,
-price REAL,
-category TEXT,
-location TEXT,
-description TEXT,
-image BLOB,
-date TEXT
-)
-""")
+for i,row in ads.iterrows():
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS favourites(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user TEXT,
-title TEXT
-)
-""")
+    st.markdown('<div class="adcard">',unsafe_allow_html=True)
 
-conn.commit()
+    col1,col2 = st.columns([1,3])
 
-# ---------------- FUNCTIONS ----------------
+    col1.image(
+        "https://via.placeholder.com/150",
+        width=120
+    )
 
-def signup(u,p):
-    cursor.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,p))
-    conn.commit()
+    col2.markdown(f"### {row['title']}")
+    col2.markdown(
+        f"<div class='price'>₹{row['price']}</div>",
+        unsafe_allow_html=True
+    )
+    col2.write(row["location"])
 
-def login(u,p):
-    cursor.execute("SELECT * FROM users WHERE username=? AND password=?",(u,p))
-    return cursor.fetchone()
+    b1,b2 = col2.columns(2)
 
-def add_ad(user,title,price,cat,loc,desc,img):
+    b1.markdown(
+        "<div class='btnchat'>Chat</div>",
+        unsafe_allow_html=True
+    )
 
-    cursor.execute("""
-    INSERT INTO ads(user,title,price,category,location,description,image,date)
-    VALUES(?,?,?,?,?,?,?,?)
-    """,(user,title,price,cat,loc,desc,img,str(datetime.now())))
+    b2.markdown(
+        "<div class='btnsell'>Sell Now</div>",
+        unsafe_allow_html=True
+    )
 
-    conn.commit()
+    st.markdown('</div>',unsafe_allow_html=True)
 
-def get_ads():
-    return pd.read_sql("SELECT * FROM ads ORDER BY id DESC",conn)
+# ---------------- ADMIN PANEL ----------------
 
-# ---------------- SESSION ----------------
+st.subheader("Admin Dashboard")
 
-if "user" not in st.session_state:
-    st.session_state.user=None
+total_users = pd.read_sql(
+"SELECT COUNT(*) c FROM users",
+conn
+).iloc[0]["c"]
 
-if "page" not in st.session_state:
-    st.session_state.page="home"
+total_ads = pd.read_sql(
+"SELECT COUNT(*) c FROM ads",
+conn
+).iloc[0]["c"]
 
-# ---------------- STYLE ----------------
+a,b,c,d = st.columns(4)
 
-st.markdown("""
-<style>
-
-.title{
-font-size:40px;
-font-weight:bold;
-color:#0f9d58;
-}
-
-.button-row button{
-background:#0f9d58;
-color:white;
-border-radius:8px;
-width:100%;
-height:45px;
-font-weight:bold;
-}
-
-.card{
-background:white;
-padding:15px;
-border-radius:12px;
-box-shadow:0px 3px 12px rgba(0,0,0,0.15);
-margin-bottom:20px;
-}
-
-.price{
-color:#ff6f00;
-font-size:22px;
-font-weight:bold;
-}
-
-</style>
-""",unsafe_allow_html=True)
-
-# ---------------- HEADER ----------------
-
-st.markdown('<div class="title">Kerala Buy & Sell</div>',unsafe_allow_html=True)
-
-# ---------------- HOME BUTTON MENU ----------------
-
-col1,col2,col3,col4=st.columns(4)
-
-if col1.button("Browse Ads"):
-    st.session_state.page="browse"
-
-if col2.button("Post Ad"):
-    st.session_state.page="post"
-
-if col3.button("My Ads"):
-    st.session_state.page="myads"
-
-if col4.button("Favourites"):
-    st.session_state.page="fav"
-
-col5,col6,col7=st.columns(3)
-
-if col5.button("Login"):
-    st.session_state.page="login"
-
-if col6.button("Signup"):
-    st.session_state.page="signup"
-
-if col7.button("Admin"):
-    st.session_state.page="admin"
-
-st.divider()
-
-# ---------------- HOME PAGE ----------------
-
-if st.session_state.page=="home":
-
-    st.subheader("Latest Listings")
-
-    df=get_ads()
-
-    cols=st.columns(3)
-
-    for i,row in df.head(9).iterrows():
-
-        with cols[i%3]:
-
-            st.markdown('<div class="card">',unsafe_allow_html=True)
-
-            if row["image"]:
-                st.image(row["image"],use_column_width=True)
-
-            st.markdown(f"### {row['title']}")
-            st.markdown(f'<div class="price">₹ {row["price"]}</div>',unsafe_allow_html=True)
-
-            st.write("📍",row["location"])
-
-            st.markdown('</div>',unsafe_allow_html=True)
-
-# ---------------- BROWSE ----------------
-
-elif st.session_state.page=="browse":
-
-    st.header("Browse Marketplace")
-
-    search=st.text_input("Search")
-
-    df=get_ads()
-
-    if search:
-        df=df[df["title"].str.contains(search,case=False)]
-
-    cols=st.columns(3)
-
-    for i,row in df.iterrows():
-
-        with cols[i%3]:
-
-            st.markdown('<div class="card">',unsafe_allow_html=True)
-
-            if row["image"]:
-                st.image(row["image"],use_column_width=True)
-
-            st.markdown(f"### {row['title']}")
-            st.markdown(f'<div class="price">₹ {row["price"]}</div>',unsafe_allow_html=True)
-
-            st.write("📍",row["location"])
-            st.write(row["description"])
-
-            st.markdown('</div>',unsafe_allow_html=True)
-
-# ---------------- POST AD ----------------
-
-elif st.session_state.page=="post":
-
-    if not st.session_state.user:
-        st.warning("Please login first")
-    else:
-
-        st.header("Post Ad")
-
-        title=st.text_input("Title")
-        price=st.number_input("Price")
-
-        category=st.selectbox(
-        "Category",
-        ["Mobiles","Electronics","Vehicles","Property","Jobs","Furniture"]
-        )
-
-        location=st.text_input("Location")
-        desc=st.text_area("Description")
-        img=st.file_uploader("Upload Image")
-
-        if st.button("Post Listing"):
-
-            image=None
-
-            if img:
-                image=img.read()
-
-            add_ad(
-            st.session_state.user,
-            title,
-            price,
-            category,
-            location,
-            desc,
-            image
-            )
-
-            st.success("Ad Posted")
-
-# ---------------- MY ADS ----------------
-
-elif st.session_state.page=="myads":
-
-    if not st.session_state.user:
-        st.warning("Login first")
-    else:
-
-        st.header("My Ads")
-
-        df=pd.read_sql(
-        "SELECT * FROM ads WHERE user=?",
-        conn,
-        params=(st.session_state.user,)
-        )
-
-        st.dataframe(df)
-
-# ---------------- FAVOURITES ----------------
-
-elif st.session_state.page=="fav":
-
-    if not st.session_state.user:
-        st.warning("Login first")
-    else:
-
-        st.header("Favourite Ads")
-
-        df=pd.read_sql(
-        "SELECT * FROM favourites WHERE user=?",
-        conn,
-        params=(st.session_state.user,)
-        )
-
-        st.dataframe(df)
-
-# ---------------- LOGIN ----------------
-
-elif st.session_state.page=="login":
-
-    st.header("Login")
-
-    u=st.text_input("Username")
-    p=st.text_input("Password",type="password")
-
-    if st.button("Login"):
-
-        user=login(u,p)
-
-        if user:
-            st.session_state.user=u
-            st.success("Login Successful")
-            st.session_state.page="home"
-        else:
-            st.error("Invalid Login")
-
-# ---------------- SIGNUP ----------------
-
-elif st.session_state.page=="signup":
-
-    st.header("Signup")
-
-    u=st.text_input("Username")
-    p=st.text_input("Password",type="password")
-
-    if st.button("Create Account"):
-
-        signup(u,p)
-
-        st.success("Account Created")
-
-# ---------------- ADMIN ----------------
-
-elif st.session_state.page=="admin":
-
-    st.header("Admin Dashboard")
-
-    ads=get_ads()
-    users=pd.read_sql("SELECT * FROM users",conn)
-
-    col1,col2=st.columns(2)
-
-    col1.metric("Total Ads",len(ads))
-    col2.metric("Total Users",len(users))
-
-    st.subheader("All Ads")
-    st.dataframe(ads)
-
-    st.subheader("All Users")
-    st.dataframe(users)
+a.metric("Total Users",total_users)
+b.metric("Total Listings",total_ads)
+c.metric("Active Chats","0")
+d.metric("Pending Ads","0")
